@@ -13,7 +13,7 @@ This repository is now package-first (helloagents/) and ships workflow definitio
 ## Development Setup
 
     # Clone and enter repo
-    git clone https://github.com/hellowind777/helloagents.git
+    git clone https://github.com/nix18/helloagents.git
     cd helloagents
 
     # Optional: editable install

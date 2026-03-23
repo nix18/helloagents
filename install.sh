@@ -3,12 +3,12 @@ set -eu
 
 # ─── HelloAGENTS Installer (macOS / Linux) ───
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/hellowind777/helloagents/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/nix18/helloagents/main/install.sh | bash
 #
 # Environment variables:
 #   HELLOAGENTS_BRANCH  — branch to install from (default: main)
 
-REPO="https://github.com/hellowind777/helloagents"
+REPO="https://github.com/nix18/helloagents"
 BRANCH="${HELLOAGENTS_BRANCH:-main}"
 
 # ─── Colors ───

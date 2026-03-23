@@ -9,7 +9,7 @@ import locale
 import os
 import sys
 
-_REPO = "https://github.com/hellowind777/helloagents"
+_REPO = "https://github.com/nix18/helloagents"
 
 
 # ---------------------------------------------------------------------------

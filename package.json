@@ -5,10 +5,10 @@
   "description": "HelloAGENTS - AI-native sub-agent orchestration framework for multi-CLI environments",
   "author": "HelloWind",
   "license": "Apache-2.0",
-  "homepage": "https://github.com/hellowind777/helloagents",
+  "homepage": "https://github.com/nix18/helloagents",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/hellowind777/helloagents.git"
+    "url": "git+https://github.com/nix18/helloagents.git"
   },
   "bin": {
     "helloagents": "./bin/cli.mjs"

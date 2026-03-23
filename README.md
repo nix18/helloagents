@@ -25,7 +25,7 @@
 ---
 
 > [!IMPORTANT]
-> **Looking for the old version of HelloAGENTS?** The legacy codebase has been moved to a separate archive repository: [helloagents-archive](https://github.com/hellowind777/helloagents-archive)
+> **Looking for the old version of HelloAGENTS?** The legacy codebase has been moved to a separate archive repository: [helloagents-archive](https://github.com/nix18/helloagents-archive)
 
 ## Table of Contents
 
@@ -203,11 +203,11 @@ Additionally, HelloAGENTS provides: **five-dimension routing scoring** (action n
 
 **macOS / Linux:**
 
-    curl -fsSL https://raw.githubusercontent.com/hellowind777/helloagents/main/install.sh | bash
+    curl -fsSL https://raw.githubusercontent.com/nix18/helloagents/main/install.sh | bash
 
 **Windows PowerShell:**
 
-    irm https://raw.githubusercontent.com/hellowind777/helloagents/main/install.ps1 | iex
+    irm https://raw.githubusercontent.com/nix18/helloagents/main/install.ps1 | iex
 
 > The script auto-detects `uv` or `pip`, installs the HelloAGENTS package, and launches an interactive menu for you to select target CLIs. Re-running performs an update.
 
@@ -218,10 +218,10 @@ Additionally, HelloAGENTS provides: **five-dimension routing scoring** (action n
 **Switch branch:**
 
     # macOS / Linux
-    curl -fsSL https://raw.githubusercontent.com/hellowind777/helloagents/beta/install.sh | HELLOAGENTS_BRANCH=beta bash
+    curl -fsSL https://raw.githubusercontent.com/nix18/helloagents/beta/install.sh | HELLOAGENTS_BRANCH=beta bash
 
     # Windows PowerShell
-    $env:HELLOAGENTS_BRANCH="beta"; irm https://raw.githubusercontent.com/hellowind777/helloagents/beta/install.ps1 | iex
+    $env:HELLOAGENTS_BRANCH="beta"; irm https://raw.githubusercontent.com/nix18/helloagents/beta/install.ps1 | iex
 
 ### Method B: npx (Node.js >= 16)
 
@@ -253,29 +253,29 @@ Additionally, HelloAGENTS provides: **five-dimension routing scoring** (action n
 
 **Install and select targets (one command):**
 
-    uv tool install --from git+https://github.com/hellowind777/helloagents helloagents && helloagents
+    uv tool install --from git+https://github.com/nix18/helloagents helloagents && helloagents
 
 > Installs the package and launches an interactive menu for you to select target CLIs. You can also specify directly: `helloagents install codex`
 
-**Update:** `uv tool install --from git+https://github.com/hellowind777/helloagents helloagents --force`
+**Update:** `uv tool install --from git+https://github.com/nix18/helloagents helloagents --force`
 
 **Uninstall:** `uv tool uninstall helloagents`
 
-**Switch branch:** `uv tool install --from git+https://github.com/hellowind777/helloagents@beta helloagents --force`
+**Switch branch:** `uv tool install --from git+https://github.com/nix18/helloagents@beta helloagents --force`
 
 ### Method D: pip (Python >= 3.10)
 
 **Install and select targets (one command):**
 
-    pip install git+https://github.com/hellowind777/helloagents.git && helloagents
+    pip install git+https://github.com/nix18/helloagents.git && helloagents
 
 > Installs the package and launches an interactive menu for you to select target CLIs. You can also specify directly: `helloagents install codex`
 
-**Update:** `pip install --upgrade git+https://github.com/hellowind777/helloagents.git`
+**Update:** `pip install --upgrade git+https://github.com/nix18/helloagents.git`
 
 **Uninstall:** `pip uninstall helloagents`
 
-**Switch branch:** `pip install --upgrade git+https://github.com/hellowind777/helloagents.git@beta`
+**Switch branch:** `pip install --upgrade git+https://github.com/nix18/helloagents.git@beta`
 
 ### HelloAGENTS commands (after installation)
 
@@ -298,19 +298,19 @@ Additionally, HelloAGENTS provides: **five-dimension routing scoring** (action n
 
     # One-line script (recommended, auto-launches interactive menu after install)
     # macOS / Linux
-    curl -fsSL https://raw.githubusercontent.com/hellowind777/helloagents/main/install.sh | bash
+    curl -fsSL https://raw.githubusercontent.com/nix18/helloagents/main/install.sh | bash
 
     # Windows PowerShell
-    irm https://raw.githubusercontent.com/hellowind777/helloagents/main/install.ps1 | iex
+    irm https://raw.githubusercontent.com/nix18/helloagents/main/install.ps1 | iex
 
     # npx (or use npx -y to auto-download without prompting)
     npx helloagents install codex
 
     # UV
-    uv tool install --from git+https://github.com/hellowind777/helloagents helloagents && helloagents install codex
+    uv tool install --from git+https://github.com/nix18/helloagents helloagents && helloagents install codex
 
     # pip
-    pip install git+https://github.com/hellowind777/helloagents.git && helloagents install codex
+    pip install git+https://github.com/nix18/helloagents.git && helloagents install codex
 
 **Update later (auto-syncs installed targets):**
 
@@ -336,19 +336,19 @@ Additionally, HelloAGENTS provides: **five-dimension routing scoring** (action n
 
     # One-line script (recommended, auto-launches interactive menu after install)
     # macOS / Linux
-    curl -fsSL https://raw.githubusercontent.com/hellowind777/helloagents/main/install.sh | bash
+    curl -fsSL https://raw.githubusercontent.com/nix18/helloagents/main/install.sh | bash
 
     # Windows PowerShell
-    irm https://raw.githubusercontent.com/hellowind777/helloagents/main/install.ps1 | iex
+    irm https://raw.githubusercontent.com/nix18/helloagents/main/install.ps1 | iex
 
     # npx (or use npx -y to auto-download without prompting)
     npx helloagents install claude
 
     # UV
-    uv tool install --from git+https://github.com/hellowind777/helloagents helloagents && helloagents install claude
+    uv tool install --from git+https://github.com/nix18/helloagents helloagents && helloagents install claude
 
     # pip
-    pip install git+https://github.com/hellowind777/helloagents.git && helloagents install claude
+    pip install git+https://github.com/nix18/helloagents.git && helloagents install claude
 
 **Update later (auto-syncs installed targets):**
 
@@ -715,7 +715,7 @@ A: An experimental Claude Code feature where multiple Claude Code instances coll
 
 **Diagnosis:** Package metadata not available
 
-**Solution:** Install the package first: `pip install git+https://github.com/hellowind777/helloagents.git` or use UV/npx methods
+**Solution:** Install the package first: `pip install git+https://github.com/nix18/helloagents.git` or use UV/npx methods
 
 **Verification:** Run `helloagents version` — should show current version number
 
@@ -891,7 +891,7 @@ This project is dual-licensed: Code under Apache-2.0, Documentation under CC BY 
 
 **Community & Support:**
 - Star the repo if HelloAGENTS helps your workflow
-- Report issues or request features on [GitHub Issues](https://github.com/hellowind777/helloagents/issues)
+- Report issues or request features on [GitHub Issues](https://github.com/nix18/helloagents/issues)
 - Contribute improvements: see [CONTRIBUTING.md](./CONTRIBUTING.md)
 
 ---

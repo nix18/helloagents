@@ -1,13 +1,13 @@
 # ─── HelloAGENTS Installer (Windows PowerShell) ───
 # Usage:
-#   irm https://raw.githubusercontent.com/hellowind777/helloagents/main/install.ps1 | iex
+#   irm https://raw.githubusercontent.com/nix18/helloagents/main/install.ps1 | iex
 #
 # Environment variables:
 #   $env:HELLOAGENTS_BRANCH  — branch to install from (default: main)
 
 $ErrorActionPreference = "Stop"
 
-$Repo   = "https://github.com/hellowind777/helloagents"
+$Repo   = "https://github.com/nix18/helloagents"
 $Branch = if ($env:HELLOAGENTS_BRANCH) { $env:HELLOAGENTS_BRANCH } else { "main" }
 
 # ─── Helpers ───

@@ -16,7 +16,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
-const REPO = "https://github.com/hellowind777/helloagents";
+const REPO = "https://github.com/nix18/helloagents";
 const MIN_PYTHON = [3, 10];
 
 function findPython() {

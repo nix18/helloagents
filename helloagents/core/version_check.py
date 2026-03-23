@@ -83,7 +83,7 @@ def _local_commit_id() -> str:
 
 def _remote_commit_id(branch: str) -> str:
     """Fetch the latest commit hash on a remote branch via GitHub API."""
-    url = f"https://api.github.com/repos/hellowind777/helloagents/commits/{branch}"
+    url = f"https://api.github.com/repos/nix18/helloagents/commits/{branch}"
     req = Request(url, headers={
         "Accept": "application/vnd.github.v3+json",
         "User-Agent": "helloagents-update-checker",
@@ -95,7 +95,7 @@ def _remote_commit_id(branch: str) -> str:
 
 def _fetch_remote_version(branch: str) -> str:
     """Fetch version from pyproject.toml on a remote branch."""
-    url = f"https://raw.githubusercontent.com/hellowind777/helloagents/{branch}/pyproject.toml"
+    url = f"https://raw.githubusercontent.com/nix18/helloagents/{branch}/pyproject.toml"
     req = Request(url, headers={"User-Agent": "helloagents-update-checker"})
     with urlopen(req, timeout=3) as resp:
         content = resp.read().decode("utf-8")
