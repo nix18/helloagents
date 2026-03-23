@@ -27,6 +27,7 @@
   代码探索/依赖分析 → spawn_agent(agent_type="explorer", prompt="...")
   代码实现 → spawn_agent(agent_type="worker", prompt="...")
   测试运行 → spawn_agent(agent_type="worker", prompt="...")
+  测试审计（test_audit_cycle / test_auditor）→ spawn_agent(agent_type="worker", prompt="...")
   方案构思 → spawn_agent(agent_type="brainstormer", prompt="...")  # DESIGN 步骤10，RLM 角色
   监控轮询 → spawn_agent(agent_type="monitor", prompt="...")  # 长时间运行的轮询任务
 
@@ -193,4 +194,65 @@ RLM 角色操作豁免:
     3. 预期范围内 → 视为预期操作，继续执行，不触发 EHRB 检测
     4. 预期范围外 → 按 G2 EHRB 检测流程处理
   降级: 无法预判预期范围 → 回退到 RLM 角色数据所有权范围判定 → 仍无法判定 → 标准 EHRB 检测
+```
+
+---
+
+## Codex CLI 下的 test_audit_cycle
+
+```yaml
+目标: 在测试执行完成后，由父代理驱动一个可写 worker 子代理执行测试质量二次审计
+
+触发条件:
+  本轮新增或修改了测试文件
+  本轮由主代理/测试子代理新增了测试
+  核心逻辑改动但现有测试覆盖明显不足
+
+执行顺序（CRITICAL）:
+  1. 父代理构造测试审计上下文包:
+     - 本轮改动文件
+     - 本轮新增/修改的测试文件
+     - 被测代码 ↔ 测试文件映射
+     - 已运行测试命令与结果
+     - 覆盖率工具/结果（如可用）
+     - 主代理关注的风险点
+  2. 调用:
+     spawn_agent(agent_type="worker", prompt="[跳过指令] ... 你负责: 执行 test_audit_cycle ...")
+  3. 立即 collab wait，禁止在 wait 前插入其他步骤
+  4. 解析返回:
+     - status=completed 且无高风险 issues → 进入回归
+     - status=partial / needs_followup=true → 可通过 send_input 要求继续修复或补充结论
+     - status=failed 且无安全回退路径 → 降级主代理接手
+  5. 若 repairs_applied 非空 → 父代理必须重新运行受影响测试
+  6. 将 blind_spots / repairs_applied / parent_guidance 纳入验收报告
+
+约束:
+  不得复用 reviewer 执行 test_audit_cycle
+  不得把 test_audit_cycle 简化成“再跑一次测试”
+  无覆盖率工具时允许启发式评估，但必须显式标注
+```
+
+## Codex CLI 下的 ide_restart_recovery
+
+```yaml
+目标: 代码更新后优先恢复/重启受影响交付物的运行入口，JetBrains 系 IDE 为显式经验场景
+
+能力阶梯:
+  1. IDE原生级:
+     若会话存在 JetBrains 系 IDE 运行配置执行能力（如 IDEA/PyCharm/WebStorm 运行配置工具）
+     → 直接重新执行主运行配置
+  2. 控制电脑级:
+     若无直接重启能力，但存在控制电脑类 MCP/skills
+     → 聚焦 JetBrains 系 IDE 窗口
+     → 必要时截屏/截窗口确认状态
+     → 使用快捷键或点击完成“停止后重新运行”或等效动作
+     → 必要时再次截图确认
+  3. 手动级:
+     以上均无或自动化失败
+     → 明确要求用户手动重启项目
+
+规则:
+  JetBrains 系 IDE 统一覆盖 IntelliJ IDEA / PyCharm / WebStorm / 其他同类 IDE
+  不得假设固定主题、固定布局、固定快捷键
+  控制电脑类 MCP/skills 仅是能力来源，不绑定单一工具品牌
 ```

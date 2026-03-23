@@ -35,3 +35,38 @@ Grok CLI:
   用户扩展: 自定义子代理调度规则同 G9 用户代理分配规则 | Skills（.grok/skills/）| MCP 服务器（.grok/settings.json 配置）
   注: 自定义子代理和 Skills 为前瞻性路径规划，当前版本主代理直接执行
 ```
+
+---
+
+## 其他 CLI 下的 test_audit_cycle 与 ide_restart_recovery
+
+```yaml
+test_audit_cycle（通用要求）:
+  目标: 测试执行完成后，必须再进行一次测试质量二次审计
+  审计维度:
+    - 覆盖率充分性
+    - 断言有效性
+    - 测试时效性
+    - blind_spots（思维局限/盲区）
+  执行策略:
+    OpenCode / Gemini / Qwen:
+      有可写子代理能力 → 调度通用可写子代理执行 test_auditor 语义
+      无稳定子代理能力 → 主代理按同一协议执行
+    Grok:
+      当前版本主代理直接执行 test_audit_cycle，保持协议一致
+  修复与回归:
+    发现问题且可安全自动修复 → 允许直接修复测试或小范围配套代码
+    repairs_applied 非空 → 必须重新运行受影响测试
+
+ide_restart_recovery（通用要求）:
+  目标: 代码更新后优先恢复/重启受影响交付物的运行入口
+  JetBrains 范围:
+    IntelliJ IDEA / PyCharm / WebStorm / 其他同类 IDE
+  能力阶梯:
+    1. IDE 原生运行配置能力
+    2. 控制电脑类 MCP/skills（聚焦窗口、截屏/截窗口、快捷键/点击）
+    3. 手动重启（明确要求用户操作）
+  规则:
+    不得把流程绑定到单一 IDEA MCP 品牌或固定 UI 布局
+    必须先做能力探测，再决定自动化或手动降级
+```

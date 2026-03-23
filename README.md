@@ -554,6 +554,10 @@ During development, the system auto-detects the project's package manager via lo
 4. Systemic scan — same issue in other modules?
 5. Lessons learned recorded in the acceptance report
 
+**Post-Test Audit Cycle** (cross-CLI): after tests are written or updated, DEVELOP now requires a second-pass test audit before final acceptance. The parent agent must provide the changed files, changed tests, executed test results, available coverage signals, and focus risks; a writable sub-agent then audits coverage sufficiency, assertion correctness, and test staleness, may directly repair tests or small supporting code, and returns blind spots plus retest guidance to the parent agent.
+
+**Runtime Recovery Verification** (cross-CLI): before final acceptance, HelloAGENTS attempts to restore the updated runtime entry. For JetBrains-family IDEs (IntelliJ IDEA, PyCharm, WebStorm, etc.), it prefers native IDE run-configuration execution when available, then falls back to desktop-control MCP/skills (focus window, screenshot, hotkey/click restart), and finally degrades to explicit user restart instructions when automation is unavailable.
+
 ### Custom Command Extension
 
 Create `.helloagents/commands/` in your project and drop in Markdown files — the filename becomes the command name:

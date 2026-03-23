@@ -60,6 +60,52 @@
       },
       "description": "质量验证结果（代码实现/测试编写类子代理使用，RLM 角色子代理可省略）"
     },
+    "test_audit": {
+      "type": "object",
+      "properties": {
+        "coverage_assessment": {
+          "type": "string",
+          "description": "覆盖率充分性评估"
+        },
+        "correctness_assessment": {
+          "type": "string",
+          "description": "断言与行为匹配度评估"
+        },
+        "staleness_assessment": {
+          "type": "string",
+          "description": "测试时效性评估"
+        },
+        "blind_spots": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "测试审计发现的思维局限/盲区"
+        },
+        "repairs_applied": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "测试审计中已执行的修复摘要"
+        },
+        "retest_commands": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "建议或已执行的回归测试命令"
+        },
+        "parent_guidance": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "返回给主代理的后续建议"
+        }
+      },
+      "description": "test_audit_cycle 的结构化结果（测试后二次审计使用）"
+    },
     "issues_found": {
       "type": "array",
       "items": {
@@ -183,6 +229,25 @@
         "建议添加缓存层提升性能",
         "考虑将大型函数拆分为更小的单元"
       ],
+      "test_audit": {
+        "coverage_assessment": "核心路径已覆盖，边界输入覆盖不足",
+        "correctness_assessment": "主要断言有效，但缺少对异常路径和副作用的验证",
+        "staleness_assessment": "有1个旧测试仍绑定历史错误消息文本",
+        "blind_spots": [
+          "空输入与超长输入未覆盖",
+          "仅验证返回值，未验证状态变更"
+        ],
+        "repairs_applied": [
+          "补充了异常路径测试",
+          "更新了过时断言"
+        ],
+        "retest_commands": [
+          "pytest --tb=short -q tests/test_routes.py"
+        ],
+        "parent_guidance": [
+          "后续如继续扩展 API，优先补充边界输入测试"
+        ]
+      },
       "needs_followup": false,
       "metadata": {
         "agent_id": "agent_001",

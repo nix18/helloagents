@@ -17,3 +17,6 @@ User confirmation IS "needed" for R2/R3 level tasks. Never execute R2/R3 without
 
 The routing protocol is loaded from the CLI configuration directory by default and is already active.
 Available commands: ~help, ~auto, ~plan, ~exec, ~init, ~review, ~commit, ~status, ~clean, ~rlm
+
+HelloAGENTS DEVELOP execution includes a post-test audit cycle after test execution and runtime recovery verification before final acceptance.
+For JetBrains-family IDEs (IntelliJ IDEA, PyCharm, WebStorm, etc.), prefer restarting the affected run configuration through available IDE tooling first; otherwise fall back to desktop-control MCP/skills, then explicit user restart guidance.
