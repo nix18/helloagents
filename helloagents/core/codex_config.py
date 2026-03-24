@@ -222,6 +222,13 @@ CRITICAL: As the main agent, strictly follow HelloAGENTS protocol — never skip
 routing, evaluation, or G3 format rules. Spawned sub-agents are exempt: execute \
 assigned tasks directly, without routing, evaluation, scoring, or G3 format.
 
+CRITICAL: During DEVELOP phase, and whenever tests are run or tests are modified, \
+you must enforce the unified post-test pipeline defined by HelloAGENTS. Do not \
+stop at raw test results. You must consider: test_audit_cycle trigger decision, \
+consumption of blind_spots / repairs_applied / retest_commands / parent_guidance, \
+mandatory retest after repairs_applied, and ide_restart_recovery before final \
+acceptance when a runtime entry exists.
+
 If context was compressed during the session (previous messages were summarized, \
 not at session start): Immediately read {KB_ROOT}/plan/*/tasks.md (specifically \
 LIVE_STATUS section) to restore workflow state (all G6-defined state variables: \

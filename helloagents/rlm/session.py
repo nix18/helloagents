@@ -20,6 +20,7 @@ import tempfile
 import uuid
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 
 class SessionManager:
@@ -118,6 +119,22 @@ class SessionManager:
         except Exception as e:
             print(f"[HelloAGENTS] log_event failed: {e}", file=sys.stderr)
             return False
+
+    def record_test_audit_event(
+        self,
+        phase: str,
+        data: dict[str, Any],
+    ) -> bool:
+        """Record a structured post-test audit event."""
+        return self.log_event(f"test_audit.{phase}", data)
+
+    def record_runtime_recovery_event(
+        self,
+        phase: str,
+        data: dict[str, Any],
+    ) -> bool:
+        """Record a structured runtime recovery event."""
+        return self.log_event(f"runtime_recovery.{phase}", data)
 
     def get_events(
         self,

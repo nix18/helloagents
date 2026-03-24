@@ -1,247 +1,252 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-HelloAGENTS 双向上下文注入脚本（阶段感知版）
+"""HelloAGENTS 双向上下文注入脚本。
 
-通过 Claude Code Hooks 实现两个方向的上下文注入:
-- UserPromptSubmit: 主代理规则强化（阶段感知 — 检测当前阶段注入对应执行规则）
-- SubagentStart: 子代理上下文注入（方案包上下文）
-
-阶段检测逻辑:
-- DEVELOP: .helloagents/plan/ 有方案包且含 tasks.md → 注入 develop.md 关键步骤
-- DESIGN: 有方案包目录但无 tasks.md → 注入 design.md 关键步骤
-- 无阶段: 注入通用 CRITICAL 规则摘要 + 核心流程提醒
-
-输入(stdin): JSON，包含 hookEventName 字段
-输出(stdout): JSON，包含 hookSpecificOutput
+通过 Hook 为主代理和子代理注入最小但关键的上下文，避免阶段规则在长对话、
+压缩恢复或不同 CLI 间漂移。
 """
 
-import sys
+from __future__ import annotations
+
+import io
 import json
 import re
-import io
+import sys
+import tempfile
 from pathlib import Path
 
-# Windows UTF-8 编码设置
-if sys.platform == 'win32':
-    if hasattr(sys.stdout, 'buffer'):
-        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-    if hasattr(sys.stderr, 'buffer'):
-        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
-    if hasattr(sys.stdin, 'buffer'):
-        sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8', errors='replace')
 
-# 限制注入内容大小，避免 token 膨胀
+if sys.platform == "win32":
+    if hasattr(sys.stdout, "buffer"):
+        sys.stdout = io.TextIOWrapper(
+            sys.stdout.buffer,
+            encoding="utf-8",
+            errors="replace",
+        )
+    if hasattr(sys.stderr, "buffer"):
+        sys.stderr = io.TextIOWrapper(
+            sys.stderr.buffer,
+            encoding="utf-8",
+            errors="replace",
+        )
+    if hasattr(sys.stdin, "buffer"):
+        sys.stdin = io.TextIOWrapper(
+            sys.stdin.buffer,
+            encoding="utf-8",
+            errors="replace",
+        )
+
+try:
+    from helloagents.runtime.post_test_pipeline import render_develop_stage_capsule
+except ImportError:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from runtime.post_test_pipeline import render_develop_stage_capsule
+
+
 MAX_MAIN_AGENT_CHARS = 20000
 MAX_SUBAGENT_CHARS = 15000
 
 
-def _fallback_reminder() -> dict:
-    """备份提醒：当文件读取失败时，返回最小化强制提醒。
+DESIGN_RULES = """[HelloAGENTS DESIGN 阶段执行提醒]
+你当前处于方案设计阶段，必须按 stages/design.md 执行：
 
-    类似 Codex 的 developer_instructions，确保即使 inject_context.py 失败，
-    AI 也能收到用户意图的明确表达。
-    """
+1. 完成 Phase1 上下文收集与复杂度判断。
+2. 完成 Phase2 方案构思与方案包生成。
+3. R3 标准流程必须做多方案对比，完成后再进入 DEVELOP。
+4. 不得跳过方案包验收，不得设计完成后直接写代码。
+"""
+
+GENERIC_RULES = """[HelloAGENTS 核心流程提醒]
+- G4 路由：R0 直接响应 | R1 快速流程 | R2 简化流程 | R3 标准流程
+- G5 阶段链：评估 -> 方案设计 -> 开发实施 -> 知识库同步 -> 完成
+- G7 模块加载：进入 DESIGN 读 stages/design.md；进入 DEVELOP 读 stages/develop.md
+- G9/G10：满足条件时必须编排子代理，等待真实返回后才能继续
+"""
+
+
+def _fallback_reminder() -> dict:
+    """Return a minimal fallback reminder when injection fails."""
     return {
         "hookSpecificOutput": {
             "hookEventName": "UserPromptSubmit",
-            "additionalContext": "CRITICAL: Load and strictly enforce HelloAGENTS protocol from ~/.claude/CLAUDE.md and ~/.claude/rules/helloagents/ before processing any request.",
+            "additionalContext": (
+                "CRITICAL: Load and strictly enforce HelloAGENTS protocol from "
+                "~/.claude/CLAUDE.md and ~/.claude/rules/helloagents/ before "
+                "processing any request."
+            ),
         }
     }
 
 
-# ---------------------------------------------------------------------------
-# 阶段检测
-# ---------------------------------------------------------------------------
+def _extract_tasks_status_score(pkg_dir: Path) -> tuple[int, float]:
+    """Score a plan package to locate the active package more reliably."""
+    score = 0
+    proposal_path = pkg_dir / "proposal.md"
+    tasks_path = pkg_dir / "tasks.md"
+    status_path = pkg_dir / ".status.json"
+
+    if proposal_path.is_file():
+        score += 1
+    if tasks_path.is_file():
+        score += 2
+
+    if status_path.is_file():
+        try:
+            status_data = json.loads(status_path.read_text(encoding="utf-8"))
+            if status_data.get("status") != "completed":
+                score += 5
+            return score, status_path.stat().st_mtime
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            pass
+
+    if tasks_path.is_file():
+        try:
+            content = tasks_path.read_text(encoding="utf-8")
+            if "@status: in_progress" in content:
+                score += 4
+            if "[ ]" in content or "[?]" in content:
+                score += 3
+            if "[√]" in content or "[X]" in content:
+                score += 1
+        except (OSError, UnicodeDecodeError):
+            pass
+        return score, tasks_path.stat().st_mtime
+
+    return score, pkg_dir.stat().st_mtime
+
+
+def _get_active_package(plan_dir: Path) -> Path | None:
+    """Return the most likely active package in .helloagents/plan."""
+    pkg_dirs = [pkg for pkg in plan_dir.iterdir() if pkg.is_dir()]
+    if not pkg_dirs:
+        return None
+    return sorted(pkg_dirs, key=_extract_tasks_status_score)[-1]
+
 
 def detect_stage(cwd: str) -> str:
-    """检测当前 HelloAGENTS 执行阶段。
-
-    通过 .helloagents/plan/ 目录状态推断:
-    - "DEVELOP": 有方案包且 tasks.md 存在（设计已完成，进入开发）
-    - "DESIGN": 有方案包目录但无 tasks.md（设计进行中）
-    - "": 无方案包（评估阶段或无活跃流程）
-    """
+    """Detect the current HelloAGENTS stage from .helloagents/plan."""
     plan_dir = Path(cwd) / ".helloagents" / "plan"
     if not plan_dir.is_dir():
         return ""
 
-    pkg_dirs = sorted(
-        [d for d in plan_dir.iterdir() if d.is_dir()],
-        key=lambda d: d.name,
-    )
-    if not pkg_dirs:
+    active_pkg = _get_active_package(plan_dir)
+    if active_pkg is None:
         return ""
 
-    latest = pkg_dirs[-1]
-    tasks_file = latest / "tasks.md"
-    proposal_file = latest / "proposal.md"
-
-    if tasks_file.is_file() and proposal_file.is_file():
-        # 检查是否有未完成任务
-        try:
-            content = tasks_file.read_text(encoding="utf-8")
-            if "[ ]" in content or "[?]" in content:
-                return "DEVELOP"
-            # 全部完成但未归档 → 仍在 DEVELOP 收尾
-            if "[√]" in content or "[X]" in content:
-                return "DEVELOP"
-        except (OSError, UnicodeDecodeError):
-            pass
+    proposal_path = active_pkg / "proposal.md"
+    tasks_path = active_pkg / "tasks.md"
+    if tasks_path.is_file() and proposal_path.is_file():
         return "DEVELOP"
-
-    if proposal_file.is_file():
+    if proposal_path.is_file():
         return "DESIGN"
-
     return ""
 
 
-# ---------------------------------------------------------------------------
-# 阶段规则摘要（硬编码关键执行步骤，不依赖文件截断）
-# ---------------------------------------------------------------------------
-
-DEVELOP_RULES = """[HelloAGENTS DEVELOP 阶段执行提醒]
-你当前处于开发实施阶段，必须严格按以下步骤执行:
-
-1. 加载模块: 读取 stages/develop.md + services/package.md（G7 规则，不可跳过）
-2. 确定方案包: 读取 CURRENT_PACKAGE 的 tasks.md 和 proposal.md
-3. 按任务清单逐项执行: moderate/complex 任务必须编排子代理（G9）
-4. 子代理协议: 遇到 [→ G10] 或 [RLM:角色名] 时按 G7 加载 rules/subagent-protocols.md
-5. 每个任务完成后更新 tasks.md 状态符号（[ ]→[√]/[X]/[-]）+ LIVE_STATUS 区域
-6. 安全与质量检查（步骤7）
-7. 测试执行与验证（步骤8）
-8. 功能验收测试（步骤9）: 模拟最终用户首次使用场景，验证交付物可正常工作。测试通过≠用户可用
-9. 知识库同步（步骤10）: KB_SKIPPED=false 时创建 CHANGELOG.md/context.md/INDEX.md/modules/
-10. 方案包归档（步骤14）: plan/ → archive/YYYY-MM/，更新 tasks.md 最终状态
-11. 输出验收报告
-
-DO NOT: 跳过模块加载直接写代码 | 跳过子代理编排 | 跳过功能验收 | 跳过知识库同步 | 跳过方案包归档"""
-
-DESIGN_RULES = """[HelloAGENTS DESIGN 阶段执行提醒]
-你当前处于方案设计阶段，必须按 stages/design.md 执行:
-
-Phase1: 上下文收集 → 项目扫描 → 复杂度评估（TASK_COMPLEXITY）→ KB_SKIPPED 判定
-Phase2: 方案构思 → 方案包生成（proposal.md + tasks.md）→ validate_package.py 验收
-完成后: 设置 CURRENT_STAGE=DEVELOP → 按 G7 加载 develop.md → 进入开发实施
-
-DO NOT: 跳过 Phase1 直接写方案 | 跳过方案包验收 | 设计完成后直接写代码不加载 develop.md"""
-
-GENERIC_RULES = """[HelloAGENTS 核心流程提醒]
-- G4 路由: R0 直接响应 | R1 快速流程 | R2 简化流程（含简单新建项目）| R3 标准流程
-- G4 评估: R2/R3 严格按 G4 需求评估章节执行
-- G5 阶段链: 评估→确认→DESIGN→DEVELOP→KB同步→完成（每阶段必须加载对应模块文件 G7）
-- G7 模块加载: 进入 DESIGN 读 stages/design.md | 进入 DEVELOP 读 stages/develop.md
-- G9 子代理: ≥2个独立工作单元时自动编排子代理并行执行
-- G11 注意力: tasks.md 状态必须随进度更新"""
-
-
 def extract_critical_rules(content: str) -> str:
-    """从 CLAUDE.md / AGENTS.md 提取 CRITICAL 标记的规则段和核心流程入口。"""
-    lines = content.split("\n")
-    critical_sections = []
+    """Extract CRITICAL-marked sections from AGENTS.md/CLAUDE.md."""
+    lines = content.splitlines()
+    blocks: list[str] = []
     in_critical = False
-    current_block = []
+    current: list[str] = []
 
     for line in lines:
-        # 检测 CRITICAL 标记
         if "CRITICAL" in line.upper():
+            if current:
+                blocks.append("\n".join(current))
+            current = [line]
             in_critical = True
-            current_block = [line]
+            continue
+
+        if in_critical and re.match(r"^#{1,3}\s", line):
+            if current:
+                blocks.append("\n".join(current))
+            current = []
+            in_critical = False
             continue
 
         if in_critical:
-            # 遇到同级或更高级标题时结束当前块
-            if re.match(r"^#{1,3}\s", line) and current_block:
-                critical_sections.append("\n".join(current_block))
-                current_block = []
-                in_critical = False
-            else:
-                current_block.append(line)
+            current.append(line)
 
-    # 收尾
-    if current_block:
-        critical_sections.append("\n".join(current_block))
+    if current:
+        blocks.append("\n".join(current))
 
-    result = "\n---\n".join(critical_sections)
-
-    # 截断到限制长度
+    result = "\n---\n".join(blocks)
     if len(result) > MAX_MAIN_AGENT_CHARS:
         result = result[:MAX_MAIN_AGENT_CHARS] + "\n...(已截断)"
-
     return result
 
 
 def _get_active_agents_context() -> str:
-    """从 SessionManager 读取活跃子代理信息，用于 compaction 后状态恢复。"""
+    """Read active child-agent state from the latest session metadata."""
     try:
-        import tempfile
         session_root = Path(tempfile.gettempdir()) / "helloagents_rlm"
         if not session_root.is_dir():
             return ""
-        # 找最新的 session 目录
+
         sessions = sorted(
-            [d for d in session_root.iterdir() if d.is_dir() and d.name.startswith("session_")],
-            key=lambda d: d.stat().st_mtime,
+            (
+                item
+                for item in session_root.iterdir()
+                if item.is_dir() and item.name.startswith("session_")
+            ),
+            key=lambda item: item.stat().st_mtime,
         )
         if not sessions:
             return ""
-        metadata_file = sessions[-1] / "metadata.json"
-        if not metadata_file.is_file():
+
+        metadata_path = sessions[-1] / "metadata.json"
+        if not metadata_path.is_file():
             return ""
-        metadata = json.loads(metadata_file.read_text(encoding="utf-8"))
-        history = metadata.get("agent_history", [])
-        if not history:
-            return ""
-        # 按 agent_id 取最新状态，过滤出非终态
-        latest = {}
-        for r in history:
-            aid = r.get("agent_id", "")
-            if aid:
-                latest[aid] = r
+
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        latest_by_agent: dict[str, dict] = {}
+        for record in metadata.get("agent_history", []):
+            agent_id = record.get("agent_id", "")
+            if agent_id:
+                latest_by_agent[agent_id] = record
+
         active = [
-            r for r in latest.values()
-            if r.get("status") not in ("completed", "failed", "cancelled")
+            record
+            for record in latest_by_agent.values()
+            if record.get("status") not in {"completed", "failed", "cancelled"}
         ]
         if not active:
             return ""
+
         lines = ["[活跃子代理]"]
-        for a in active:
-            lines.append(f"- {a.get('agent_id','?')}: role={a.get('role','?')}, task={a.get('task','?')[:60]}, status={a.get('status','?')}")
+        for record in active:
+            lines.append(
+                "- "
+                f"{record.get('agent_id', '?')}: "
+                f"role={record.get('role', '?')}, "
+                f"task={record.get('task', '?')[:60]}, "
+                f"status={record.get('status', '?')}"
+            )
         return "\n".join(lines)
     except Exception:
         return ""
 
 
+def _build_develop_context(agents_ctx: str) -> str:
+    """Build injected DEVELOP context from the runtime fact source."""
+    ctx = render_develop_stage_capsule()
+    if agents_ctx:
+        ctx += "\n\n" + agents_ctx
+    return ctx
+
+
 def handle_user_prompt_submit(cwd: str) -> dict:
-    """
-    路径1: UserPromptSubmit — 主代理规则强化（阶段感知）
-
-    检测当前执行阶段，注入阶段相关的执行规则摘要。
-    解决 compact 后规则丢失、长对话中 agent 行为漂移的问题。
-
-    注入策略:
-    - DEVELOP 阶段: 注入 develop.md 关键步骤摘要（最高优先级）
-    - DESIGN 阶段: 注入 design.md 关键步骤摘要
-    - 无阶段: 注入通用 CRITICAL 规则摘要（原有逻辑）
-    """
+    """Inject main-agent context according to the detected stage."""
     cwd_path = Path(cwd)
-
-    # 1. 阶段检测
     stage = detect_stage(cwd)
-
-    # 2. 活跃子代理状态（compaction 后恢复）
     agents_ctx = _get_active_agents_context()
 
-    # 3. 阶段规则注入（优先于通用 CRITICAL 提取）
     if stage == "DEVELOP":
-        ctx = DEVELOP_RULES
-        if agents_ctx:
-            ctx += "\n\n" + agents_ctx
         return {
             "hookSpecificOutput": {
                 "hookEventName": "UserPromptSubmit",
-                "additionalContext": ctx,
-            },
+                "additionalContext": _build_develop_context(agents_ctx),
+            }
         }
 
     if stage == "DESIGN":
@@ -252,10 +257,9 @@ def handle_user_prompt_submit(cwd: str) -> dict:
             "hookSpecificOutput": {
                 "hookEventName": "UserPromptSubmit",
                 "additionalContext": ctx,
-            },
+            }
         }
 
-    # 3. 无活跃阶段 → 通用规则提取（原有逻辑）
     rule_file = None
     for name in ("CLAUDE.md", "AGENTS.md"):
         candidate = cwd_path / name
@@ -263,96 +267,82 @@ def handle_user_prompt_submit(cwd: str) -> dict:
             rule_file = candidate
             break
 
-    if not rule_file:
+    if rule_file is None:
         return _fallback_reminder()
 
     try:
         content = rule_file.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError) as e:
+    except (OSError, UnicodeDecodeError):
         return _fallback_reminder()
 
-    # 通用规则 + CRITICAL 提取
     summary = GENERIC_RULES + "\n---\n" + extract_critical_rules(content)
     if agents_ctx:
         summary += "\n\n" + agents_ctx
     if len(summary) > MAX_MAIN_AGENT_CHARS:
         summary = summary[:MAX_MAIN_AGENT_CHARS] + "\n...(已截断)"
 
-    if not summary.strip():
-        return _fallback_reminder()
-
     return {
         "hookSpecificOutput": {
             "hookEventName": "UserPromptSubmit",
             "additionalContext": (
-                f"[HelloAGENTS] 规则提醒（来自 {rule_file.name}）:\n{summary}"
+                f"[HelloAGENTS] 规则提醒（来自 {rule_file.name}）\n{summary}"
             ),
         }
     }
 
 
 def handle_subagent_start(cwd: str) -> dict:
-    """
-    路径2: SubagentStart — 子代理上下文注入
-
-    读取 .helloagents/ 下的方案包上下文（proposal.md + tasks.md + context.md），
-    组装为结构化上下文字符串注入子代理。
-    """
+    """Inject the latest plan package context for child agents."""
     ha_dir = Path(cwd) / ".helloagents"
     if not ha_dir.is_dir():
         return {}
 
-    parts = []
+    parts: list[str] = []
 
-    # 1. 读取 context.md（项目上下文摘要）
-    context_file = ha_dir / "context.md"
-    if context_file.is_file():
+    context_path = ha_dir / "context.md"
+    if context_path.is_file():
         try:
-            ctx = context_file.read_text(encoding="utf-8").strip()
-            if ctx:
-                parts.append(f"## 项目上下文\n{ctx[:4000]}")
+            context_text = context_path.read_text(encoding="utf-8").strip()
+            if context_text:
+                parts.append(f"## 项目上下文\n{context_text[:4000]}")
         except (OSError, UnicodeDecodeError):
             pass
 
-    # 1.5 读取 guidelines.md（项目技术指南，开发前注入）
-    guidelines_file = ha_dir / "guidelines.md"
-    if guidelines_file.is_file():
+    guidelines_path = ha_dir / "guidelines.md"
+    if guidelines_path.is_file():
         try:
-            gl = guidelines_file.read_text(encoding="utf-8").strip()
-            if gl:
-                parts.append(f"## 技术指南\n{gl[:3000]}")
+            guidelines_text = guidelines_path.read_text(encoding="utf-8").strip()
+            if guidelines_text:
+                parts.append(f"## 技术指南\n{guidelines_text[:3000]}")
         except (OSError, UnicodeDecodeError):
             pass
 
-    # 2. 读取 plan/ 下当前方案包
     plan_dir = ha_dir / "plan"
-    if plan_dir.is_dir():
-        # 找最新的方案包目录（按名称排序，最新在后）
-        pkg_dirs = sorted(
-            [d for d in plan_dir.iterdir() if d.is_dir()],
-            key=lambda d: d.name,
-        )
-        if pkg_dirs:
-            latest_pkg = pkg_dirs[-1]
-            # 读取 proposal.md
-            proposal = latest_pkg / "proposal.md"
-            if proposal.is_file():
-                try:
-                    text = proposal.read_text(encoding="utf-8").strip()
-                    if text:
-                        parts.append(f"## 当前方案 ({latest_pkg.name})\n{text[:6000]}")
-                except (OSError, UnicodeDecodeError):
-                    pass
+    active_pkg = _get_active_package(plan_dir) if plan_dir.is_dir() else None
+    if active_pkg is not None:
+        proposal_path = active_pkg / "proposal.md"
+        tasks_path = active_pkg / "tasks.md"
 
-            # 读取 tasks.md
-            tasks = latest_pkg / "tasks.md"
-            if tasks.is_file():
-                try:
-                    text = tasks.read_text(encoding="utf-8").strip()
-                    if text:
-                        parts.append(f"## 任务清单\n{text[:1500]}")
-                except (OSError, UnicodeDecodeError):
-                    pass
+        if proposal_path.is_file():
+            try:
+                proposal_text = proposal_path.read_text(encoding="utf-8").strip()
+                if proposal_text:
+                    parts.append(f"## 当前方案 ({active_pkg.name})\n{proposal_text[:6000]}")
+            except (OSError, UnicodeDecodeError):
+                pass
+
+        if tasks_path.is_file():
+            try:
+                tasks_text = tasks_path.read_text(encoding="utf-8").strip()
+                if tasks_text:
+                    parts.append(f"## 任务清单\n{tasks_text[:1500]}")
+            except (OSError, UnicodeDecodeError):
+                pass
+
+        parts.append(
+            "## DEVELOP 后测闭环摘要\n"
+            + render_develop_stage_capsule()[:2500]
+        )
 
     if not parts:
         return {}
@@ -365,17 +355,15 @@ def handle_subagent_start(cwd: str) -> dict:
         "hookSpecificOutput": {
             "hookEventName": "SubagentStart",
             "additionalContext": (
-                f"[HelloAGENTS] 方案包上下文（自动注入）:\n{combined}"
+                "[HelloAGENTS] 方案包上下文（自动注入）:\n"
+                + combined
             ),
         }
     }
 
 
-def main():
-    """主入口: 从 stdin 读取 hook 事件 JSON，按 hookEventName 分发处理。
-
-    支持事件名映射，使 Gemini/Grok 等 CLI 的事件名映射到等效的 Claude Code 事件。
-    """
+def main() -> None:
+    """Dispatch hook events from stdin."""
     try:
         raw = sys.stdin.read()
         if not raw.strip():
@@ -384,13 +372,10 @@ def main():
     except (json.JSONDecodeError, ValueError):
         sys.exit(0)
 
-    # 事件名映射: 其他 CLI 事件 → Claude Code 等效事件
-    EVENT_MAP = {
-        "BeforeAgent": "UserPromptSubmit",   # Gemini/Qwen → Claude 等效
+    event_map = {
+        "BeforeAgent": "UserPromptSubmit",
     }
-
-    event = data.get("hookEventName", "")
-    event = EVENT_MAP.get(event, event)
+    event = event_map.get(data.get("hookEventName", ""), data.get("hookEventName", ""))
     cwd = data.get("cwd", ".")
 
     if event == "UserPromptSubmit":

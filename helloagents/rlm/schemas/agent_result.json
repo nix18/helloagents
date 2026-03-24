@@ -63,6 +63,14 @@
     "test_audit": {
       "type": "object",
       "properties": {
+        "executed": {
+          "type": "boolean",
+          "description": "是否实际执行了测试审计"
+        },
+        "via": {
+          "type": "string",
+          "description": "测试审计执行方式（如 worker/direct/skipped）"
+        },
         "coverage_assessment": {
           "type": "string",
           "description": "覆盖率充分性评估"
