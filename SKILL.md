@@ -1,6 +1,6 @@
 ---
 name: helloagents
-description: AI-native sub-agent orchestration framework for multi-CLI environments
+description: AI-native workflow and debugging protocol for multi-CLI environments. Use when Codex needs structured routing, staged execution, validation, knowledge sync, or generalized bug investigation across runtime paths, history/replay paths, source data, derived artifacts, caches, and rendered outputs.
 metadata:
   short-description: Structured task workflow with RLM sub-agent orchestration
 ---
@@ -20,3 +20,5 @@ Available commands: ~help, ~auto, ~plan, ~exec, ~init, ~review, ~commit, ~status
 
 HelloAGENTS DEVELOP execution includes a unified post-test pipeline: test execution, audit trigger, structured test audit consumption, retest, and runtime recovery verification before final acceptance.
 For JetBrains-family IDEs (IntelliJ IDEA, PyCharm, WebStorm, etc.), prefer restarting the affected run configuration through available IDE tooling first; otherwise fall back to desktop-control MCP/skills, then explicit user restart guidance.
+
+When the task is bugfix/debug/regression analysis, do not stop at the failing surface. Compare working path vs failing path, separate source data from derived/persisted/presentation artifacts, and fix the first divergence owner rather than the last visible symptom.

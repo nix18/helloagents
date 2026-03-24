@@ -802,10 +802,10 @@ Scope: This rule applies to ALL ⛔ END_TURN marks in ALL modules, no exceptions
 | 会话启动 | {HELLOAGENTS_ROOT}/config.json, {CWD}/.helloagents/config.json, user/memory/*.md（所有用户记忆文件）— 静默读取注入上下文，不输出加载状态，文件不存在时静默跳过，config.json 中的键覆盖 G1 默认值 |
 | R1 进入快速流程（编码类） | services/package.md, rules/state.md, services/knowledge.md（CHANGELOG更新时） |
 | R2/R3 进入方案设计（入口） | stages/design.md |
-| DESIGN Phase1 按需 | services/knowledge.md（KB_SKIPPED=false）, rules/scaling.md（TASK_COMPLEXITY=complex，在步骤3设置后按条件加载）, rules/tools.md（project_stats.py 调用时） |
+| DESIGN Phase1 按需 | services/knowledge.md（KB_SKIPPED=false）, rules/scaling.md（TASK_COMPLEXITY=complex，在步骤3设置后按条件加载）, rules/tools.md（project_stats.py 调用时）, rules/debugging.md（调试/修复/回归排障任务） |
 | DESIGN Phase2 按需 | services/package.md, services/templates.md, rules/state.md |
 | R2/R3 进入开发实施（入口） | stages/develop.md, services/package.md |
-| DEVELOP 按需 | services/knowledge.md（KB_SKIPPED=false）, services/attention.md（进度快照时）, rules/cache.md, rules/state.md |
+| DEVELOP 按需 | services/knowledge.md（KB_SKIPPED=false）, services/attention.md（进度快照时）, rules/cache.md, rules/state.md, rules/debugging.md（调试/修复/回归排障任务） |
 | ~auto | functions/auto.md |
 | ~plan | functions/plan.md |
 | ~exec | functions/exec.md, rules/tools.md |
