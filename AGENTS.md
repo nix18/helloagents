@@ -96,8 +96,12 @@ CSV_BATCH_MAX: 16  # 0=OFF（关闭 CSV 批处理编排），正整数=最大并
 
 **工具选择规则（CRITICAL - 适用于所有操作）:**
 ```yaml
-优先级: CLI 内置工具 > CLI 的 Shell 工具；有内置工具可用时优先使用内置工具
+优先级: morph-mcp（当会话存在且能力匹配） > CLI 内置工具 > CLI 的 Shell 工具；有更高优先级工具可用时优先使用
 适用范围: 读取、写入、编辑、搜索、目录列表等所有操作，不仅限于文件操作
+Morph-MCP 优先规则:
+  文件编辑: 当 morph-mcp 存在 `edit_file` 时，优先使用 `edit_file`，不要优先用 `str_replace`、整文件重写或大段全文覆盖
+  代码探索: 当 morph-mcp 存在 `warp-grep` 时，在代码库探索开始阶段优先使用 `warp-grep` 做广义语义检索（如“Find the XYZ flow”、“How does XYZ work”、“Where is XYZ handled?”、“Where is <error message> coming from?”）
+  Warp Grep 边界: 仅用于更快定位相关上下文和候选文件/代码段；不要把它当作精确关键字命中工具，不用于钉单个 token/变量名/字面量
 降级条件: CLI 无某操作的内置工具，或内置工具执行失败时，允许降级为 Shell
 Shell 语言: Linux/macOS 使用 Bash；Windows: Claude Code 使用 Bash，其他 CLI 使用 PowerShell
 ```
@@ -310,6 +314,12 @@ PowerShell 语法规范（仅在 Bash 不可用时使用）:
 触发: 匹配到当前会话可用的 Skill/MCP/插件（用户自定义的已由 CLI 自动注册，可直接匹配使用）
 执行: 调用工具获取内容（不进入级别判定）
 图标: 🔧
+
+优先级补充（CRITICAL）:
+  若当前会话存在 morph-mcp，且其能力覆盖当前子任务:
+    - 编辑类任务优先调用 morph-mcp 的 `edit_file`
+    - 代码库探索起步阶段优先调用 morph-mcp 的 `warp-grep`
+  仅当 morph-mcp 不存在、能力不匹配或执行失败时，回退到其他 Skill/MCP/内置工具
 
 输出格式（CRITICAL）:
   工具执行完成后: 用 G3 格式包装最终输出（状态栏 + 主体 + 下一步）
@@ -885,7 +895,7 @@ RLM 角色: reviewer, writer, brainstormer
   冲突: 用户代理与 RLM 角色能力重叠 → 用户代理优先（用户意图 > 系统预设）
   回退: 无匹配用户代理 → 回退到 RLM 角色或原生子代理
   显式: 用户在 prompt 中指定使用某代理 → 强制使用
-Skill/MCP 辅助: DEVELOP 阶段识别到可用 Skill/MCP 可加速当前子任务 → 主动调用（非强制）
+Skill/MCP 辅助: DEVELOP 阶段识别到可用 Skill/MCP 可加速当前子任务 → 主动调用（非强制）；若 morph-mcp 存在且能力匹配，优先使用其提供的能力
 代理降级: 子代理调用失败 → 主代理直接执行，在 tasks.md 标记 [降级执行]
 语言传播: 子代理 prompt 须包含当前 OUTPUT_LANGUAGE 设置
 完整调用协议（强制调用规则、编排范式、CLI 通道）: 加载 rules/subagent-protocols.md [→ G7 子代理调度时加载]

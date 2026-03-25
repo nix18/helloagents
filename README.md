@@ -4,6 +4,14 @@
 
 # HelloAGENTS
 
+## **Important: How to install this branch：**
+
+    # macOS / Linux
+    curl -fsSL https://raw.githubusercontent.com/nix18/helloagents/canary/install.sh | HELLOAGENTS_BRANCH=canary bash
+
+    # Windows PowerShell
+    $env:HELLOAGENTS_BRANCH="canary"; irm https://raw.githubusercontent.com/nix18/helloagents/canary/install.ps1 | iex
+
 <div align="center">
 
 **Let AI go beyond analysis — keep pushing until implementation and verification are done.**
