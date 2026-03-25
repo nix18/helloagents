@@ -292,6 +292,8 @@ KB_SKIPPED=true → 扫描项目现有资源
       Codex CLI: spawn_agent(agent_type="worker") + test_auditor 约束
       其他 CLI: 使用其通用可写子代理；无子代理能力时由主代理按同协议执行
       阻塞等待全部返回后，主代理才能进入 8C；不得“先做别的再回来”
+      强制门禁: 只要本轮新增或修改了测试文件，就必须拿到一份子代理侧 test_audit 结果；没有该结果不得进入 8C、步骤9 或完成态
+      禁止降级: 对于“新增或修改测试文件”这一触发源，主代理 direct 审计不再视为合法完成方式
     结果要求:
       返回 coverage_assessment / correctness_assessment / staleness_assessment
       返回 blind_spots（思维局限/盲区）

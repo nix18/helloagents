@@ -57,6 +57,7 @@ def render_develop_stage_capsule() -> str:
             "- DEVELOP 与 ~test 入口不得各自维护独立后测流程，应复用同一 post-test pipeline。",
             "- reviewer 保持只读；测试审计使用独立 test_auditor 语义。",
             "- test_audit 的结构化结果必须被消费到回归、验收和事件流。",
+            "- 只要本轮新增或修改了测试文件，就必须执行子代理侧测试审计；没有子代理审计结果不得结束流程。",
         )
     )
     return "\n".join(lines)
@@ -84,6 +85,8 @@ class AuditTriggerDecision:
     triggered: bool
     reason: str
     source: str
+    requires_writable_subagent: bool = False
+    hard_gate: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-serializable representation."""
@@ -144,6 +147,7 @@ class PostTestContext:
     runtime_target: str = ""
     audit_required: bool | None = None
     allow_direct_audit: bool = True
+    subagent_capability: str = "available"
 
 
 @dataclass(slots=True)
@@ -156,9 +160,7 @@ class PostTestReport:
     audit_result: TestAuditResult
     retest_required: bool
     retest_results: list[TestCommandResult] = field(default_factory=list)
-    runtime_recovery: RuntimeRecoveryResult = field(
-        default_factory=RuntimeRecoveryResult
-    )
+    runtime_recovery: RuntimeRecoveryResult = field(default_factory=RuntimeRecoveryResult)
     acceptance_summary: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -237,12 +239,18 @@ class PostTestPipelineExecutor:
 
     def decide_audit_trigger(self, context: PostTestContext) -> AuditTriggerDecision:
         """Decide whether test audit must run."""
+        if context.test_files:
+            return AuditTriggerDecision(
+                True,
+                "本轮新增或修改了测试文件，必须执行子代理侧测试审计。",
+                "test_files",
+                requires_writable_subagent=True,
+                hard_gate=True,
+            )
         if context.audit_required is True:
             return AuditTriggerDecision(True, "显式要求执行测试审计", "explicit")
         if context.audit_required is False:
             return AuditTriggerDecision(False, "显式禁用测试审计", "explicit")
-        if context.test_files:
-            return AuditTriggerDecision(True, "本轮新增或修改了测试文件", "test_files")
         if context.risk_points:
             return AuditTriggerDecision(
                 True,
@@ -280,6 +288,30 @@ class PostTestPipelineExecutor:
                 },
             )
 
+        if decision.hard_gate and audit_result.status == "failed":
+            acceptance_summary = self._build_acceptance_summary(
+                decision,
+                audit_result,
+                retest_results,
+                RuntimeRecoveryResult(required=False, strategy="blocked_by_test_audit"),
+            )
+            return PostTestReport(
+                mode=context.mode,
+                trigger_source=context.trigger_source,
+                audit_decision=decision,
+                audit_result=audit_result,
+                retest_required=retest_required,
+                retest_results=retest_results,
+                runtime_recovery=RuntimeRecoveryResult(
+                    required=False,
+                    executed=False,
+                    success=False,
+                    strategy="blocked_by_test_audit",
+                    guidance=["hard gate: 子代理侧测试审计未完成，禁止进入运行入口恢复和完成态。"],
+                ),
+                acceptance_summary=acceptance_summary,
+            )
+
         runtime_recovery = self._recover_runtime(context, decision, audit_result)
         acceptance_summary = self._build_acceptance_summary(
             decision,
@@ -314,14 +346,58 @@ class PostTestPipelineExecutor:
             )
 
         self._emit("test_audit.dispatched", _default_event_payload(context, decision))
-        if self._audit_runner is not None:
+        if decision.requires_writable_subagent and self._audit_runner is None:
+            audit_result = TestAuditResult(
+                status="failed",
+                executed=False,
+                via="blocked_no_subagent",
+                issues=["命中测试文件变更后必须执行子代理侧测试审计，当前未提供可写子代理执行器。"],
+                parent_guidance=[
+                    "新增或修改测试文件时，禁止主代理直接审计。",
+                    "请先调度 test_auditor 子代理，再继续后测流程。",
+                ],
+                needs_followup=True,
+            )
+        elif self._audit_runner is not None:
             audit_result = self._audit_runner(context, decision)
         else:
             audit_result = self._build_direct_audit(context)
+
+        if decision.requires_writable_subagent and audit_result.via == "direct":
+            audit_result = TestAuditResult(
+                status="failed",
+                executed=False,
+                via="blocked_wrong_executor",
+                issues=[
+                    "新增或修改测试文件后，测试审计必须由子代理执行，不能走主代理 direct 降级。"
+                ],
+                parent_guidance=[
+                    "请改为调度可写 test_auditor 子代理。",
+                    "完成子代理审计后，再进入 repairs_applied / retest / acceptance。",
+                ],
+                needs_followup=True,
+            )
+        elif decision.requires_writable_subagent and audit_result.via not in {
+            "blocked_no_subagent",
+            "blocked_wrong_executor",
+        }:
+            missing_fields = self._validate_subagent_audit_result(audit_result)
+            if missing_fields:
+                audit_result = TestAuditResult(
+                    status="failed",
+                    executed=False,
+                    via="blocked_incomplete_audit",
+                    issues=[
+                        "新增或修改测试文件后，子代理测试审计结果不完整，缺少: "
+                        + "、".join(missing_fields)
+                    ],
+                    parent_guidance=[
+                        "请确保 test_auditor 实际执行，并返回完整的结构化 test_audit 字段。",
+                    ],
+                    needs_followup=True,
+                )
         event_name = (
-            "test_audit.blocked"
-            if audit_result.status == "failed"
-            else "test_audit.completed"
+            "test_audit.blocked" if audit_result.status == "failed" else "test_audit.completed"
         )
         self._emit(
             event_name,
@@ -415,6 +491,23 @@ class PostTestPipelineExecutor:
                 f"{'成功' if runtime_recovery.success else '未完成'}"
             )
         return notes
+
+    def _validate_subagent_audit_result(self, audit_result: TestAuditResult) -> list[str]:
+        """Validate the minimum contract for a hard-gated sub-agent audit."""
+        missing: list[str] = []
+        if not audit_result.executed:
+            missing.append("executed=true")
+        if audit_result.via in {"direct", "not_run", "skipped", "blocked_no_subagent"}:
+            missing.append("via=subagent")
+        if not audit_result.coverage_assessment:
+            missing.append("coverage_assessment")
+        if not audit_result.correctness_assessment:
+            missing.append("correctness_assessment")
+        if not audit_result.staleness_assessment:
+            missing.append("staleness_assessment")
+        if not audit_result.parent_guidance:
+            missing.append("parent_guidance")
+        return missing
 
     def _emit(self, event_type: str, payload: dict[str, Any]) -> None:
         """Emit a structured event if an event logger is configured."""

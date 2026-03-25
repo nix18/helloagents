@@ -126,9 +126,7 @@ class TestPostTestPipeline(unittest.TestCase):
         self.assertTrue(report.audit_result.executed)
         self.assertTrue(report.retest_required)
         self.assertEqual(report.runtime_recovery.strategy, "ide-native")
-        self.assertTrue(
-            any("边界输入仍需人工补测" in note for note in report.acceptance_summary)
-        )
+        self.assertTrue(any("边界输入仍需人工补测" in note for note in report.acceptance_summary))
         self.assertEqual(
             [event for event, _ in events],
             [
@@ -141,6 +139,140 @@ class TestPostTestPipeline(unittest.TestCase):
                 "runtime_recovery.completed",
             ],
         )
+
+    def test_test_file_changes_require_subagent_hard_gate(self) -> None:
+        executor = PostTestPipelineExecutor()
+        decision = executor.decide_audit_trigger(
+            PostTestContext(
+                mode="full",
+                trigger_source="DEVELOP",
+                test_files=["tests/test_demo.py"],
+            )
+        )
+
+        self.assertTrue(decision.triggered)
+        self.assertTrue(decision.requires_writable_subagent)
+        self.assertTrue(decision.hard_gate)
+
+    def test_test_file_hard_gate_overrides_explicit_disable(self) -> None:
+        executor = PostTestPipelineExecutor()
+        decision = executor.decide_audit_trigger(
+            PostTestContext(
+                mode="full",
+                trigger_source="DEVELOP",
+                test_files=["tests/test_demo.py"],
+                audit_required=False,
+            )
+        )
+
+        self.assertTrue(decision.triggered)
+        self.assertEqual(decision.source, "test_files")
+
+    def test_executor_blocks_when_test_files_changed_without_subagent_runner(self) -> None:
+        executor = PostTestPipelineExecutor()
+        report = executor.execute(
+            PostTestContext(
+                mode="full",
+                trigger_source="DEVELOP",
+                changed_files=["src/demo.py", "tests/test_demo.py"],
+                test_files=["tests/test_demo.py"],
+            )
+        )
+
+        self.assertEqual(report.audit_result.status, "failed")
+        self.assertEqual(report.audit_result.via, "blocked_no_subagent")
+        self.assertTrue(report.audit_result.needs_followup)
+        self.assertEqual(report.runtime_recovery.strategy, "blocked_by_test_audit")
+
+    def test_executor_blocks_direct_audit_for_test_file_changes(self) -> None:
+        def direct_like_audit(context: PostTestContext, decision) -> TestAuditResult:
+            return TestAuditResult(
+                status="completed",
+                executed=True,
+                via="direct",
+                parent_guidance=["pretend direct audit"],
+            )
+
+        executor = PostTestPipelineExecutor(audit_runner=direct_like_audit)
+        report = executor.execute(
+            PostTestContext(
+                mode="full",
+                trigger_source="DEVELOP",
+                changed_files=["tests/test_demo.py"],
+                test_files=["tests/test_demo.py"],
+            )
+        )
+
+        self.assertEqual(report.audit_result.status, "failed")
+        self.assertEqual(report.audit_result.via, "blocked_wrong_executor")
+
+    def test_hard_gate_failure_skips_runtime_recovery_runner(self) -> None:
+        runtime_called = False
+
+        def runtime_runner(context: PostTestContext, audit_result: TestAuditResult):
+            nonlocal runtime_called
+            runtime_called = True
+            return RuntimeRecoveryResult(required=True, executed=True, success=True)
+
+        executor = PostTestPipelineExecutor(runtime_recovery_runner=runtime_runner)
+        report = executor.execute(
+            PostTestContext(
+                mode="full",
+                trigger_source="DEVELOP",
+                changed_files=["tests/test_demo.py"],
+                test_files=["tests/test_demo.py"],
+                has_runtime_entry=True,
+                runtime_target="demo",
+            )
+        )
+
+        self.assertFalse(runtime_called)
+        self.assertEqual(report.runtime_recovery.strategy, "blocked_by_test_audit")
+        self.assertIn("子代理侧测试审计未完成", report.runtime_recovery.guidance[0])
+
+    def test_executor_blocks_incomplete_subagent_audit_result(self) -> None:
+        def incomplete_audit(context: PostTestContext, decision) -> TestAuditResult:
+            return TestAuditResult(
+                status="completed",
+                executed=True,
+                via="worker",
+                parent_guidance=["missing core fields"],
+            )
+
+        executor = PostTestPipelineExecutor(audit_runner=incomplete_audit)
+        report = executor.execute(
+            PostTestContext(
+                mode="full",
+                trigger_source="DEVELOP",
+                changed_files=["tests/test_demo.py"],
+                test_files=["tests/test_demo.py"],
+            )
+        )
+
+        self.assertEqual(report.audit_result.status, "failed")
+        self.assertEqual(report.audit_result.via, "blocked_incomplete_audit")
+        self.assertIn("coverage_assessment", report.audit_result.issues[0])
+
+    def test_runtime_capsule_mentions_subagent_gate_for_test_changes(self) -> None:
+        text = render_develop_stage_capsule()
+        self.assertIn("新增或修改了测试文件", text)
+        self.assertIn("子代理侧测试审计", text)
+
+    def test_rule_docs_mark_test_file_changes_as_subagent_hard_gate(self) -> None:
+        expectations = {
+            "helloagents/stages/develop.md": "必须拿到一份子代理侧 test_audit 结果",
+            "helloagents/functions/test.md": "必须完成一次子代理侧 test_audit",
+            "helloagents/rules/subagent-protocols.md": "主代理 direct 审计不得用于放行完成态",
+            "README.md": "must obtain a sub-agent-side audit result",
+            "README_CN.md": "必须执行一次子代理侧 `test_audit_cycle`",
+        }
+        for relative_path, token in expectations.items():
+            with self.subTest(path=relative_path):
+                self.assertIn(token, read_text(relative_path))
+
+    def test_test_function_doc_no_longer_allows_direct_fallback_for_test_files(self) -> None:
+        text = read_text("helloagents/functions/test.md")
+        self.assertIn("新增/修改测试文件触发源 → 视为阻断失败，不得 direct 放行", text)
 
     def test_inject_context_uses_runtime_capsule_for_develop(self) -> None:
         inject_context = load_inject_context_module()
