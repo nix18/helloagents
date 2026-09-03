@@ -59,27 +59,22 @@ def _msg(zh: str, en: str) -> str:
     """Return message based on detected locale."""
     return zh if _LANG == "zh" else en
 
-def _get_cli_helloagents_dir() -> Path:
-    """Get CLI-specific helloagents directory by detecting installed CLI.
 
-    NOTE: This list must stay in sync with CLI_TARGETS in helloagents/_common.py.
-    This script is deployed standalone, so it cannot import from the package.
+def _cli_helloagents_dir(cli_name: str) -> Path:
+    """Cache directory for the CLI whose config is being checked.
+
+    The cache stores that CLI's own config mtime, so it is per-CLI state
+    and must live in that CLI's directory.  Deriving it from the detected
+    cli_name keeps it in step with the config file actually inspected;
+    a separate candidate list would only stay correct by coincidence.
     """
     home = Path.home()
-    candidates = [
-        home / ".claude" / "helloagents",
-        home / ".codex" / "helloagents",
-        home / ".config" / "opencode" / "helloagents",
-        home / ".gemini" / "helloagents",
-        home / ".qwen" / "helloagents",
-        home / ".grok" / "helloagents",
-    ]
-    for path in candidates:
-        if path.exists():
-            return path
-    return home / ".helloagents"
-
-CACHE_FILE = _get_cli_helloagents_dir() / ".config_check_cache"
+    bases = {
+        "claude": home / ".claude",
+        "codex": home / ".codex",
+    }
+    base = bases.get(cli_name)
+    return (base / "helloagents") if base else (home / ".helloagents")
 
 
 def get_config_mtime(cli_name: str) -> float:
@@ -100,21 +95,21 @@ def get_config_mtime(cli_name: str) -> float:
         return 0.0
 
 
-def get_cached_mtime() -> float:
+def get_cached_mtime(cache_file: Path) -> float:
     """获取缓存的修改时间。"""
-    if not CACHE_FILE.exists():
+    if not cache_file.exists():
         return 0.0
     try:
-        return float(CACHE_FILE.read_text(encoding="utf-8").strip())
+        return float(cache_file.read_text(encoding="utf-8").strip())
     except Exception:
         return 0.0
 
 
-def update_cache(mtime: float):
+def update_cache(cache_file: Path, mtime: float):
     """更新缓存文件。"""
     try:
-        CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
-        CACHE_FILE.write_text(str(mtime), encoding="utf-8")
+        cache_file.parent.mkdir(parents=True, exist_ok=True)
+        cache_file.write_text(str(mtime), encoding="utf-8")
     except Exception:
         pass
 
@@ -163,19 +158,21 @@ def main():
     else:
         sys.exit(0)
 
+    cache_file = _cli_helloagents_dir(cli_name) / ".config_check_cache"
+
     # 强制模式：直接完整检测
     if force_check:
         config_ok = check_config_integrity(cli_name)
         current_mtime = get_config_mtime(cli_name)
-        update_cache(current_mtime)
+        update_cache(cache_file, current_mtime)
     else:
         # 轻量级模式：基于修改时间缓存
         current_mtime = get_config_mtime(cli_name)
-        cached_mtime = get_cached_mtime()
+        cached_mtime = get_cached_mtime(cache_file)
         if current_mtime <= cached_mtime:
             sys.exit(0)
         config_ok = check_config_integrity(cli_name)
-        update_cache(current_mtime)
+        update_cache(cache_file, current_mtime)
 
     if not config_ok:
         context = _msg("会话启动", "session start") if force_check else _msg(

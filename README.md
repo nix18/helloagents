@@ -646,7 +646,7 @@ When ≥6 structurally identical tasks exist in the same execution layer, the sy
 
 ### Update Check
 
-On the first response of each session, the system silently checks for new versions. Results are cached at `~/.helloagents/.update_cache`, valid for the duration set by `UPDATE_CHECK` (default 72 hours, set to 0 to disable). When a new version is available, `⬆️ New version {version} available` appears in the response footer. Any errors during the check are silently skipped and never interrupt normal usage.
+On the first response of each session, the system silently checks for new versions. Results are cached as `.update_cache` inside each installed CLI's `helloagents` directory (for example `~/.claude/helloagents/`), falling back to `~/.helloagents/` when no CLI directory is present. The cache is valid for the duration set by `UPDATE_CHECK` (default 72 hours, set to 0 to disable). When a new version is available, `⬆️ New version {version} available` appears in the response footer. Any errors during the check are silently skipped and never interrupt normal usage.
 
 ## Repository Guide
 

@@ -285,6 +285,24 @@ def detect_installed_clis() -> list[str]:
     return installed
 
 
+def get_installed_cli_dirs() -> list[Path]:
+    """Return every existing CLI-specific helloagents directory.
+
+    Cache files must stay reachable from whichever CLI happens to be
+    running.  A "first existing candidate wins" lookup binds the cache to
+    one CLI and leaves every other CLI permanently missing it, so callers
+    that read or write shared caches should broadcast across this list
+    instead of picking a single directory.
+
+    Falls back to ``[~/.helloagents]`` when no CLI directory exists.
+    """
+    home = Path.home()
+    candidates = [home / cfg["dir"] / PLUGIN_DIR_NAME
+                  for cfg in CLI_TARGETS.values()]
+    existing = [path for path in candidates if path.exists()]
+    return existing or [home / ".helloagents"]
+
+
 def _detect_installed_targets() -> list[str]:
     """Detect which CLI targets have HelloAGENTS installed (module + rules).
 

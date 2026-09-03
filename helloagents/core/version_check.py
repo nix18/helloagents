@@ -12,7 +12,7 @@ from pathlib import Path
 from importlib.metadata import version as get_version
 from urllib.request import urlopen, Request
 
-from .._common import REPO_API_LATEST, CLI_TARGETS, PLUGIN_DIR_NAME
+from .._common import REPO_API_LATEST, get_installed_cli_dirs
 
 
 # ---------------------------------------------------------------------------
@@ -145,86 +145,103 @@ def fetch_latest_version(branch: str, timeout: int = 5) -> str:
 # Update cache
 # ---------------------------------------------------------------------------
 
-def _get_cli_helloagents_dir() -> Path:
-    """Get CLI-specific helloagents directory by detecting installed CLI.
+def _iter_update_cache_files() -> list[Path]:
+    """Every ``.update_cache`` location, one per installed CLI directory.
 
-    Derives candidates from CLI_TARGETS to stay in sync automatically.
+    Resolved on each call rather than at import time, so a CLI installed
+    after this module was imported is still covered.
     """
-    home = Path.home()
-    candidates = [home / cfg["dir"] / PLUGIN_DIR_NAME
-                  for cfg in CLI_TARGETS.values()]
-    for path in candidates:
-        if path.exists():
-            return path
-    # Fallback to ~/.helloagents if no CLI directory found
-    return home / ".helloagents"
-
-_UPDATE_CACHE_DIR = _get_cli_helloagents_dir()
-_UPDATE_CACHE_FILE = _UPDATE_CACHE_DIR / ".update_cache"
+    return [d / ".update_cache" for d in get_installed_cli_dirs()]
 
 
 def _read_update_cache(local_ver: str, branch: str) -> dict | None:
-    """Read update cache. Returns cached data if fresh, else None.
+    """Read the update cache. Returns cached data if fresh, else None.
 
-    Uses expires_at (ISO date) from cache file to determine freshness.
+    Scans every installed CLI directory and returns the newest entry that
+    passes validation, so a cache written while running under one CLI is
+    still visible from another.
+
+    Uses expires_at (ISO date) from the cache file to determine freshness.
     Cache is invalidated when local version or branch changes.
     """
-    try:
-        if not _UPDATE_CACHE_FILE.exists():
-            return None
-        data = json.loads(_UPDATE_CACHE_FILE.read_text(encoding="utf-8"))
-        expires_at = data.get("expires_at", "")
-        if not expires_at:
-            return None
-        from datetime import datetime, timezone
-        expiry = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
-        if datetime.now(timezone.utc) >= expiry:
-            return None
-        if data.get("local_version") != local_ver:
-            return None
-        if data.get("branch") != branch:
-            return None
-        return data
-    except Exception:
-        return None
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    best: dict | None = None
+    best_ts = float("-inf")
+    for cache_file in _iter_update_cache_files():
+        try:
+            if not cache_file.exists():
+                continue
+            data = json.loads(cache_file.read_text(encoding="utf-8"))
+            expires_at = data.get("expires_at", "")
+            if not expires_at:
+                continue
+            expiry = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+            if now >= expiry:
+                continue
+            if data.get("local_version") != local_ver:
+                continue
+            if data.get("branch") != branch:
+                continue
+            ts = float(data.get("last_check", 0) or 0)
+            if ts > best_ts:
+                best, best_ts = data, ts
+        except Exception:
+            continue
+    return best
 
 
 def _write_update_cache(has_update: bool, local_ver: str,
                         remote_ver: str, branch: str,
                         cache_ttl_hours: int | None = None) -> None:
-    """Write update check result to central cache file (~/.helloagents/).
+    """Broadcast the update check result to every installed CLI directory.
+
+    Each CLI reads the cache from its own helloagents directory, so the
+    result is written to all of them.  A failure on one target never
+    prevents the others from being written.
 
     Args:
         cache_ttl_hours: If provided, expires_at = now + N hours.
-            If None, preserves existing expires_at from cache file
-            (falls back to now if no prior cache exists).
+            If None, preserves the furthest existing expires_at found
+            across the targets (falls back to now if none exists).
     """
     import time
     from datetime import datetime, timezone, timedelta
     try:
         now = time.time()
+        targets = _iter_update_cache_files()
         if cache_ttl_hours is not None:
             expires_at = datetime.now(timezone.utc) + timedelta(hours=cache_ttl_hours)
         else:
-            # Preserve existing expires_at from prior cache
+            # Preserve the furthest expires_at already recorded anywhere
             expires_at = datetime.now(timezone.utc)
-            try:
-                if _UPDATE_CACHE_FILE.exists():
-                    old = json.loads(_UPDATE_CACHE_FILE.read_text(encoding="utf-8"))
+            for cache_file in targets:
+                try:
+                    if not cache_file.exists():
+                        continue
+                    old = json.loads(cache_file.read_text(encoding="utf-8"))
                     old_exp = old.get("expires_at", "")
-                    if old_exp:
-                        expires_at = datetime.fromisoformat(old_exp.replace("Z", "+00:00"))
-            except Exception:
-                pass
-        _UPDATE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        _UPDATE_CACHE_FILE.write_text(json.dumps({
+                    if not old_exp:
+                        continue
+                    parsed = datetime.fromisoformat(old_exp.replace("Z", "+00:00"))
+                    if parsed > expires_at:
+                        expires_at = parsed
+                except Exception:
+                    continue
+        payload = json.dumps({
             "last_check": now,
             "expires_at": expires_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
             "has_update": has_update,
             "local_version": local_ver,
             "remote_version": remote_ver,
             "branch": branch,
-        }, ensure_ascii=False), encoding="utf-8")
+        }, ensure_ascii=False)
+        for cache_file in targets:
+            try:
+                cache_file.parent.mkdir(parents=True, exist_ok=True)
+                cache_file.write_text(payload, encoding="utf-8")
+            except Exception:
+                continue
     except Exception:
         pass
 
@@ -242,7 +259,8 @@ def check_update(force: bool = False,
     1. Compare version numbers (catches version bumps).
     2. If versions match, compare git commit hashes (catches same-version pushes).
 
-    Results cached to ~/.helloagents/.update_cache.
+    Results are cached to ``.update_cache`` inside every installed CLI
+    helloagents directory (falling back to ``~/.helloagents``).
     Cache auto-invalidates when local version or branch changes.
 
     NOTE: All output is pure English to ensure AI CLI keyword matching
