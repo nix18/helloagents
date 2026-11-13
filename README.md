@@ -16,7 +16,7 @@
 
 **Let AI go beyond analysis — keep pushing until implementation and verification are done.**
 
-[![Version](https://img.shields.io/badge/version-2.3.7-orange.svg)](./pyproject.toml)
+[![Version](https://img.shields.io/badge/version-2.3.8-orange.svg)](./pyproject.toml)
 [![npm](https://img.shields.io/npm/v/helloagents.svg)](https://www.npmjs.com/package/helloagents)
 [![Python](https://img.shields.io/badge/python-%3E%3D3.10-3776AB.svg)](./pyproject.toml)
 [![Commands](https://img.shields.io/badge/commands-15-6366f1.svg)](./helloagents/functions)
@@ -652,7 +652,7 @@ On the first response of each session, the system silently checks for new versio
 
 - AGENTS.md: router and workflow protocol
 - SKILL.md: skill discovery metadata for CLI targets
-- pyproject.toml: package metadata (v2.3.7)
+- pyproject.toml: package metadata (v2.3.8)
 - helloagents/cli.py: CLI entry point
 - helloagents/_common.py: shared constants and utilities
 - helloagents/core/: CLI management modules (install, uninstall, update, status, dispatcher, hooks settings)
@@ -802,7 +802,13 @@ A: An experimental Claude Code feature where multiple Claude Code instances coll
 
 ## Version History
 
-### v2.3.7 (current)
+### v2.3.8 (current)
+
+**Improvements:**
+- Applied anti-overengineering and anti-defensive-coding principles across global instructions, design, development, and review roles.
+- Clarified validation at trust boundaries, evidence-based error handling, minimal abstractions, and verification within the current task's scope.
+
+### v2.3.7
 
 **Bug Fixes:**
 - Fixed non-coding tasks incorrectly creating knowledge base when KB_CREATE_MODE=2 (added programming task check in design.md Phase1 step 1)
@@ -880,6 +886,17 @@ A: An experimental Claude Code feature where multiple Claude Code instances coll
 - Auto-append Git author info to CHANGELOG entries
 
 ## Contributing
+
+### Keep implementation proportional to the task
+
+HelloAGENTS applies anti-overengineering and anti-defensive-coding principles throughout design, development, and review:
+
+- Act within the authorized scope, state reasonable assumptions for nonblocking uncertainty, and base warnings on concrete evidence. Plan larger changes and confirm their scope once.
+- Choose the simplest solution that meets current requirements. Add helpers only for real reuse or clearer main-path logic; avoid speculative abstractions, compatibility layers, and extension points.
+- Validate untrusted data once at the system boundary, then trust established internal contracts. Handle real failures where recovery or error translation is needed; avoid redundant guards, catch-all fallback, and speculative retries. Keep necessary security checks at real trust boundaries.
+- Keep synchronous work synchronous and control flow flat. Test real behavior and required failure boundaries, use mocks only where needed, and stop when the task is complete without unrelated refactoring.
+
+The executable instructions live in `AGENTS.md` (G1), the design/development stages, and the review roles.
 
 See CONTRIBUTING.md for contribution rules and PR checklist.
 

@@ -16,7 +16,7 @@
 
 **让 AI 不止于分析，而是持续推进到实现与验证完成。**
 
-[![Version](https://img.shields.io/badge/version-2.3.7-orange.svg)](./pyproject.toml)
+[![Version](https://img.shields.io/badge/version-2.3.8-orange.svg)](./pyproject.toml)
 [![npm](https://img.shields.io/npm/v/helloagents.svg)](https://www.npmjs.com/package/helloagents)
 [![Python](https://img.shields.io/badge/python-%3E%3D3.10-3776AB.svg)](./pyproject.toml)
 [![Commands](https://img.shields.io/badge/commands-15-6366f1.svg)](./helloagents/functions)
@@ -654,7 +654,7 @@ CHANGELOG 使用语义版本号（X.Y.Z），版本来源优先级：用户指�
 
 - AGENTS.md：路由与工作流协议
 - SKILL.md：CLI 目标的技能发现元数据
-- pyproject.toml：包元数据（v2.3.7）
+- pyproject.toml：包元数据（v2.3.8）
 - helloagents/cli.py：CLI 入口
 - helloagents/_common.py：共享常量与工具函数
 - helloagents/core/：CLI 管理模块（安装、卸载、更新、状态、调度器、钩子设置）
@@ -804,7 +804,13 @@ CHANGELOG 使用语义版本号（X.Y.Z），版本来源优先级：用户指�
 
 ## 版本历史
 
-### v2.3.7（当前）
+### v2.3.8（当前）
+
+**改进优化：**
+- 在全局指令、方案设计、开发实施和审查角色中统一融入反过度设计、反过度防御原则。
+- 明确信任边界校验、有依据的错误处理、最小抽象和当前任务范围内的验证要求。
+
+### v2.3.7
 
 **Bug 修复：**
 - 修复非编码任务在 KB_CREATE_MODE=2 时错误创建知识库的问题（design.md Phase1 步骤1 增加编程任务判定）
@@ -882,6 +888,17 @@ CHANGELOG 使用语义版本号（X.Y.Z），版本来源优先级：用户指�
 - CHANGELOG 条目自动追加 Git 作者信息
 
 ## 参与贡献
+
+### 实现规模与任务相称
+
+HelloAGENTS 在方案设计、开发实施和代码审查中统一应用反过度设计、反过度防御原则：
+
+- 在授权范围内偏向行动，非关键不确定项说明合理假设后继续，警告须有具体依据；较大改动先规划并一次确认范围。
+- 用满足当前需求的最简单方案实现；仅为真实复用或更清晰的主干逻辑提取 helper，不预留假想需求的抽象、兼容层或扩展点。
+- 外部不可信数据在系统边界校验一次，内部信任已建立的契约；只在需要恢复或转换错误的边界处理真实失败，不添加冗余守卫、宽泛兜底或假想故障的重试。真实信任边界的必要安全校验仍须保留。
+- 同步逻辑保持同步，控制流保持扁平；测试真实行为及需求内的失败边界，仅在必要处 Mock；任务完成即停止，不顺手重构无关代码。
+
+实际执行规则位于 `AGENTS.md`（G1）、方案设计/开发实施模块及审查角色中。
 
 详见 CONTRIBUTING.md 了解贡献规则和 PR 检查清单。
 

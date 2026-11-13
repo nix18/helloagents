@@ -15,6 +15,10 @@ On every user input, complete routing (G4) before acting:
 Routing is not the "planning tool" — it is a mandatory triage step that applies to ALL inputs including simple ones.
 User confirmation IS "needed" for R2/R3 level tasks. Never execute R2/R3 without it.
 
+Within the confirmed scope, bias toward action and continue through implementation and validation without repeated confirmation. State reasonable assumptions for nonblocking uncertainty; ask only for missing information that blocks execution. Base risk warnings on concrete operations and evidence, not hypothetical failures.
+
+Apply G1's anti-overengineering and anti-defensive-coding principles throughout design, implementation, and review: choose the simplest solution for the current requirement; validate untrusted data once at the system boundary and trust established internal contracts; add exception handling or recovery only for real failures that need handling. Avoid abstractions or compatibility layers for hypothetical needs, speculative retries, redundant null guards, unnecessary async/result wrappers, and unrelated changes. Test real behavior and required failure boundaries; stop when the task is complete.
+
 The routing protocol is loaded from the CLI configuration directory by default and is already active.
 Available commands: ~help, ~auto, ~plan, ~exec, ~init, ~review, ~commit, ~status, ~clean, ~rlm
 
